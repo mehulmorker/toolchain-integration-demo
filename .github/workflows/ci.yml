@@ -4,9 +4,6 @@ on:
   push:
     branches:
       - '**'
-  pull_request:
-    branches:
-      - main
 
 jobs:
   build-and-test:
@@ -26,3 +23,23 @@ jobs:
 
       - name: Run tests
         run: npm test
+
+      - name: Notify Jira on success
+        if: success()
+        run: |
+          ISSUE_KEY=$(git log -1 --pretty=%B | grep -oE '[A-Z]+-[0-9]+')
+          curl -X POST \
+            -u "${{ secrets.JIRA_EMAIL }}:${{ secrets.JIRA_API_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            https://${{ secrets.JIRA_DOMAIN }}/rest/api/3/issue/$ISSUE_KEY/comment \
+            -d '{"body": "✅ CI pipeline passed successfully."}'
+
+      - name: Notify Jira on failure
+        if: failure()
+        run: |
+          ISSUE_KEY=$(git log -1 --pretty=%B | grep -oE '[A-Z]+-[0-9]+')
+          curl -X POST \
+            -u "${{ secrets.JIRA_EMAIL }}:${{ secrets.JIRA_API_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            https://${{ secrets.JIRA_DOMAIN }}/rest/api/3/issue/$ISSUE_KEY/comment \
+            -d '{"body": "❌ CI pipeline failed. Please check logs."}'
