@@ -24,6 +24,13 @@ jobs:
       - name: Run tests
         run: npm test
 
+      # 🔑 THIS STEP WAS MISSING
+      - name: Extract Jira issue key
+        id: jira
+        run: |
+          ISSUE_KEY=$(git log --pretty=%B | grep -oE '[A-Z]+-[0-9]+' | head -n 1 || true)
+          echo "issue_key=$ISSUE_KEY" >> $GITHUB_OUTPUT
+
       - name: Notify Jira on success
         if: success() && steps.jira.outputs.issue_key != ''
         run: |
