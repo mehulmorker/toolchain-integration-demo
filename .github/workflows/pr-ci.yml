@@ -1,0 +1,106 @@
+name: PR CI Pipeline
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  pr-build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      # -------------------------
+      # Checkout & Setup
+      # -------------------------
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+
+      - name: Install dependencies
+        run: npm ci || npm install
+
+      # -------------------------
+      # Run Tests (capture result)
+      # -------------------------
+      - name: Run tests
+        id: tests
+        continue-on-error: true
+        run: npm test
+
+      # -------------------------
+      # Extract Jira Issue Key
+      # -------------------------
+      - name: Extract Jira issue key
+        id: jira
+        run: |
+          ISSUE_KEY=$(git log --pretty=%B | grep -oE '[A-Z]+-[0-9]+' | head -n 1 || true)
+          echo "issue_key=$ISSUE_KEY" >> $GITHUB_OUTPUT
+
+      # -------------------------
+      # Jira Comment – PR Success
+      # -------------------------
+      - name: Comment on Jira (PR checks passed)
+        if: steps.tests.outcome == 'success' && steps.jira.outputs.issue_key != ''
+        run: |
+          curl -X POST \
+            -u "${{ secrets.JIRA_EMAIL }}:${{ secrets.JIRA_API_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            https://${{ secrets.JIRA_DOMAIN }}/rest/api/3/issue/${{ steps.jira.outputs.issue_key }}/comment \
+            -d '{
+              "body": {
+                "type": "doc",
+                "version": 1,
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "✅ Pull Request checks passed. The change is ready for review."
+                      }
+                    ]
+                  }
+                ]
+              }
+            }'
+
+      # -------------------------
+      # Jira Comment – PR Failure
+      # -------------------------
+      - name: Comment on Jira (PR checks failed)
+        if: steps.tests.outcome == 'failure' && steps.jira.outputs.issue_key != ''
+        run: |
+          curl -X POST \
+            -u "${{ secrets.JIRA_EMAIL }}:${{ secrets.JIRA_API_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            https://${{ secrets.JIRA_DOMAIN }}/rest/api/3/issue/${{ steps.jira.outputs.issue_key }}/comment \
+            -d '{
+              "body": {
+                "type": "doc",
+                "version": 1,
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "❌ Pull Request checks failed. Please fix CI issues before review."
+                      }
+                    ]
+                  }
+                ]
+              }
+            }'
+
+      # -------------------------
+      # Fail PR if Tests Failed
+      # -------------------------
+      - name: Fail PR if tests failed
+        if: steps.tests.outcome == 'failure'
+        run: |
+          echo "PR CI failed"
+          exit 1
