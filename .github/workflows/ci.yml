@@ -24,7 +24,12 @@ jobs:
       - name: Install dependencies
         run: npm ci || npm install
 
+      # -------------------------
+      # Run Tests (DO NOT EXIT JOB)
+      # -------------------------
       - name: Run tests
+        id: tests
+        continue-on-error: true
         run: npm test
 
       # -------------------------
@@ -38,10 +43,10 @@ jobs:
           echo "Detected Jira issue: $ISSUE_KEY"
 
       # -------------------------
-      # Notify Jira on CI Success
+      # Jira Comment – SUCCESS
       # -------------------------
       - name: Comment on Jira (CI success)
-        if: success() && steps.jira.outputs.issue_key != ''
+        if: steps.tests.outcome == 'success' && steps.jira.outputs.issue_key != ''
         run: |
           curl -X POST \
             -u "${{ secrets.JIRA_EMAIL }}:${{ secrets.JIRA_API_TOKEN }}" \
@@ -57,7 +62,7 @@ jobs:
                     "content": [
                       {
                         "type": "text",
-                        "text": "✅ CI pipeline passed successfully."
+                        "text": "✅ CI checks passed. All tests are green and the change is safe to progress."
                       }
                     ]
                   }
@@ -66,10 +71,10 @@ jobs:
             }'
 
       # -------------------------
-      # Notify Jira on CI Failure
+      # Jira Comment – FAILURE
       # -------------------------
       - name: Comment on Jira (CI failure)
-        if: failure() && steps.jira.outputs.issue_key != ''
+        if: steps.tests.outcome == 'failure' && steps.jira.outputs.issue_key != ''
         run: |
           curl -X POST \
             -u "${{ secrets.JIRA_EMAIL }}:${{ secrets.JIRA_API_TOKEN }}" \
@@ -85,7 +90,7 @@ jobs:
                     "content": [
                       {
                         "type": "text",
-                        "text": "❌ CI pipeline failed. Please check the GitHub Actions logs."
+                        "text": "❌ CI checks failed. One or more tests did not pass. The issue is blocked until the pipeline is green."
                       }
                     ]
                   }
@@ -94,10 +99,10 @@ jobs:
             }'
 
       # -------------------------
-      # Auto-transition Jira (Success → Done)
+      # Jira Transition – SUCCESS → Done
       # -------------------------
       - name: Move Jira issue to Done
-        if: success() && steps.jira.outputs.issue_key != ''
+        if: steps.tests.outcome == 'success' && steps.jira.outputs.issue_key != ''
         run: |
           curl -X POST \
             -u "${{ secrets.JIRA_EMAIL }}:${{ secrets.JIRA_API_TOKEN }}" \
@@ -110,10 +115,10 @@ jobs:
             }'
 
       # -------------------------
-      # Auto-transition Jira (Failure → In Progress)
+      # Jira Transition – FAILURE → In Progress
       # -------------------------
       - name: Move Jira issue to In Progress
-        if: failure() && steps.jira.outputs.issue_key != ''
+        if: steps.tests.outcome == 'failure' && steps.jira.outputs.issue_key != ''
         run: |
           curl -X POST \
             -u "${{ secrets.JIRA_EMAIL }}:${{ secrets.JIRA_API_TOKEN }}" \
@@ -124,3 +129,12 @@ jobs:
                 "id": "${{ secrets.JIRA_IN_PROGRESS_TRANSITION_ID }}"
               }
             }'
+
+      # -------------------------
+      # FINAL: Fail Job if Tests Failed
+      # -------------------------
+      - name: Fail CI if tests failed
+        if: steps.tests.outcome == 'failure'
+        run: |
+          echo "Tests failed. Marking CI job as failed."
+          exit 1
