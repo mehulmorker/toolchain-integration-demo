@@ -3,7 +3,7 @@ name: CI Pipeline
 on:
   push:
     branches:
-      - '**'
+      - "**"
 
 jobs:
   build-and-test:
@@ -16,7 +16,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: "18"
 
       - name: Install dependencies
         run: npm ci || npm install
@@ -25,21 +25,51 @@ jobs:
         run: npm test
 
       - name: Notify Jira on success
-        if: success()
+        if: success() && steps.jira.outputs.issue_key != ''
         run: |
-          ISSUE_KEY=$(git log -1 --pretty=%B | grep -oE '[A-Z]+-[0-9]+')
           curl -X POST \
             -u "${{ secrets.JIRA_EMAIL }}:${{ secrets.JIRA_API_TOKEN }}" \
             -H "Content-Type: application/json" \
-            https://${{ secrets.JIRA_DOMAIN }}/rest/api/3/issue/$ISSUE_KEY/comment \
-            -d '{"body": "✅ CI pipeline passed successfully."}'
+            https://${{ secrets.JIRA_DOMAIN }}/rest/api/3/issue/${{ steps.jira.outputs.issue_key }}/comment \
+            -d '{
+              "body": {
+                "type": "doc",
+                "version": 1,
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "✅ CI pipeline passed successfully."
+                      }
+                    ]
+                  }
+                ]
+              }
+            }'
 
       - name: Notify Jira on failure
-        if: failure()
+        if: failure() && steps.jira.outputs.issue_key != ''
         run: |
-          ISSUE_KEY=$(git log -1 --pretty=%B | grep -oE '[A-Z]+-[0-9]+')
           curl -X POST \
             -u "${{ secrets.JIRA_EMAIL }}:${{ secrets.JIRA_API_TOKEN }}" \
             -H "Content-Type: application/json" \
-            https://${{ secrets.JIRA_DOMAIN }}/rest/api/3/issue/$ISSUE_KEY/comment \
-            -d '{"body": "❌ CI pipeline failed. Please check logs."}'
+            https://${{ secrets.JIRA_DOMAIN }}/rest/api/3/issue/${{ steps.jira.outputs.issue_key }}/comment \
+            -d '{
+              "body": {
+                "type": "doc",
+                "version": 1,
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "❌ CI pipeline failed. Please check logs."
+                      }
+                    ]
+                  }
+                ]
+              }
+            }'
