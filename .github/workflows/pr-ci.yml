@@ -34,11 +34,13 @@ jobs:
       # -------------------------
       # Extract Jira Issue Key
       # -------------------------
-      - name: Extract Jira issue key
+      - name: Extract Jira issue key (from PR)
         id: jira
         run: |
-          ISSUE_KEY=$(git log --pretty=%B | grep -oE '[A-Z]+-[0-9]+' | head -n 1 || true)
+          ISSUE_KEY=$(echo "${{ github.event.pull_request.title }} ${{ github.head_ref }}" \
+            | grep -oE '[A-Z]+-[0-9]+' | head -n 1 || true)
           echo "issue_key=$ISSUE_KEY" >> $GITHUB_OUTPUT
+          echo "Detected Jira issue: $ISSUE_KEY"
 
       # -------------------------
       # Jira Comment – PR Success
